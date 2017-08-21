@@ -1,0 +1,4 @@
+pandas==0.20.3
+protobuf==3.3.0
+py3-ortools==6.3.4431
+six==1.10.0

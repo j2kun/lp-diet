@@ -1,0 +1,30 @@
+nutrient,lower_bound,upper_bound
+water (g),3700,
+energy (kcal),1800,2200
+protein (g),56,
+total fat (g),20,30
+carbohydrate (g),130,
+dietary fiber (g),38,
+calcium (mg),1000,2500
+iron (mg),8,45
+phosphorus (mg),700,4000
+potassium (mg),4700,
+sodium (mg),1500,2300
+zinc (mg),11,40
+copper (mg),0.9,10
+manganese (mg),2.3,11
+selenium (μg),55,400
+vitamin c (mg),90,2000
+thiamin (mg),1.2,
+riboflavin (mg),1.3,
+niacin (mg),16,35
+pantothenic acid (mg),5,
+vitamin b6 (mg),1.3,100
+dietary folate equivalents (μg),400,1000
+choline (mg),550,3500
+vitamin b12 (μg),2.4,
+vitamin a retinol activity equivalents (μg),900,3000
+vitamin e (alpha-tocopherol) (mg),15,1000
+vitamin d (iu),400,4000
+vitamin k (phylloquinone) (μg),120,
+cholesterol (mg),300,
