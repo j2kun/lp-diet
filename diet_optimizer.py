@@ -64,18 +64,38 @@ class DietOptimizer(object):
         self.objective.SetMinimization()
 
     def solve(self):
+        '''
+            Return a dictionary with 'foods' and 'nutrients' keys representing
+            the solution and the nutrient amounts
+        '''
         status = self.solver.Solve()
         if status in [self.solver.OPTIMAL, self.solver.FEASIBLE]:
             print('Found feasible solution')
-            chosen_foods = {
-                food_name: var.solution_value()
-                for food_name, var in self.variable_dict.items() if var.solution_value() > 1e-10
-            }
-
-            self.chosen_foods = chosen_foods
-            return chosen_foods
         else:
             raise Exception('Unable to find feasible solution')
+
+        chosen_foods = {
+            food_name: var.solution_value()
+            for food_name, var in self.variable_dict.items() if var.solution_value() > 1e-10
+        }
+
+        self.chosen_foods = chosen_foods
+
+        nutrients = {
+            row['nutrient']: self.nutrients_in_diet(chosen_foods, row['nutrient'])
+            for row in self.constraints_table
+        }
+
+        return {
+            'foods': chosen_foods,
+            'nutrients': nutrients,
+        }
+
+    def nutrients_in_diet(self, chosen_foods, nutrient_name):
+        return sum(
+            row[nutrient_name] * chosen_foods[row['description']]
+            for row in self.food_table if row['description'] in chosen_foods
+        )
 
     def create_variable_dict(self):
         '''
@@ -169,7 +189,7 @@ class DietOptimizer(object):
         calories_name = 'energy (kcal)'
         calories_lower_bound = self.foods_for_nutrient(calories_name, scale_by=lower/100)
         calories_upper_bound = self.foods_for_nutrient(calories_name, scale_by=upper/100)
-        carbohydrate = self.foods_for_nutrient(carbohydrate_name, scale_by=9.0)
+        carbohydrate = self.foods_for_nutrient(carbohydrate_name, scale_by=4.0)
 
         constraint_lb = calories_lower_bound <= carbohydrate
         constraint_ub = carbohydrate <= calories_upper_bound
@@ -178,10 +198,37 @@ class DietOptimizer(object):
         self.constraint_dict[carbohydrate_name + ' (lower bound)'] = constraint_lb
         self.constraint_dict[carbohydrate_name + ' (upper bound)'] = constraint_ub
 
-    def summarize(self):
+    def summarize_optimization_problem(self):
         for k, v in self.constraint_dict.items():
             cstr = str(v)
             if len(cstr) > 40:
                 print(str(k), '{}...{}'.format(cstr[:20], cstr[-20:]))
             else:
                 print(str(k), cstr)
+
+    def summarize_solution(self, solution):
+        foods = solution['foods']
+        nutrients = solution['nutrients']
+
+        food_rows = {
+            row['description']: row for row in self.food_table if row['description'] in foods
+        }
+
+        print('Diet:')
+        print('-' * 50 + '\n')
+        for food in sorted(foods.keys()):
+            print('{:4.0f}g: {}'.format(foods[food] * 100, food))
+            for nutrient in nutrients:
+                if food_rows[food][nutrient] > 0:
+                    nutrient_percent = 100 * (food_rows[food][nutrient] * foods[food] / nutrients[nutrient])
+                    if nutrient_percent > 0.5:
+                        print('\t{:2.0f}% of {}'.format(nutrient_percent, nutrient))
+            print()
+
+        print('Nutrient totals')
+        print('-' * 50 + '\n')
+        for nutrient in nutrients:
+            tokens = nutrient.split('(')
+            name, unit = '('.join(tokens[:-1]), tokens[-1]
+            unit = unit.strip(')')
+            print('{:G} {} {}'.format(nutrients[nutrient], unit, name))
