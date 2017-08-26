@@ -24,8 +24,8 @@ def from_csv(filename, headers=True):
 
 
 class DietOptimizer(object):
-    def __init__(self, nutrient_data_filename='sr28.csv',
-            nutrient_constraints_filename='constraints_simple.csv'):
+    def __init__(self, nutrient_data_filename='sr28_simple.csv',
+                 nutrient_constraints_filename='constraints_simple.csv'):
 
         self.food_table = from_csv(nutrient_data_filename)
 
@@ -54,7 +54,10 @@ class DietOptimizer(object):
 
         self.create_variable_dict()
 
-        self.special_constraints = {'total fat (g)': self.create_fat_constraint}
+        self.special_constraints = {
+            'total fat (g)': self.create_fat_constraint,
+            'carbohydrate (g)': self.create_carb_constraint,
+        }
         self.create_constraints()
 
         self.objective = self.solver.Objective()
@@ -155,6 +158,25 @@ class DietOptimizer(object):
         self.solver.Add(constraint_ub)
         self.constraint_dict[fat_name + ' (lower bound)'] = constraint_lb
         self.constraint_dict[fat_name + ' (upper bound)'] = constraint_ub
+
+    def create_carb_constraint(self, lower, upper):
+        '''
+            Compute the constraint that says the total consumed carbohydrate
+            must be between certain percents of the total calories.  Same idea
+            as for fat.
+        '''
+        carbohydrate_name = 'carbohydrate (g)'
+        calories_name = 'energy (kcal)'
+        calories_lower_bound = self.foods_for_nutrient(calories_name, scale_by=lower/100)
+        calories_upper_bound = self.foods_for_nutrient(calories_name, scale_by=upper/100)
+        carbohydrate = self.foods_for_nutrient(carbohydrate_name, scale_by=9.0)
+
+        constraint_lb = calories_lower_bound <= carbohydrate
+        constraint_ub = carbohydrate <= calories_upper_bound
+        self.solver.Add(constraint_lb)
+        self.solver.Add(constraint_ub)
+        self.constraint_dict[carbohydrate_name + ' (lower bound)'] = constraint_lb
+        self.constraint_dict[carbohydrate_name + ' (upper bound)'] = constraint_ub
 
     def summarize(self):
         for k, v in self.constraint_dict.items():
