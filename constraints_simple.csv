@@ -1,6 +1,5 @@
 nutrient,lower_bound,upper_bound
-water (g),3700,4000
-energy (kcal),1000,2000
+energy (kcal),1200,1500
 protein (g),50,75
 total fat (g),50,65
 carbohydrate (g),20,35
