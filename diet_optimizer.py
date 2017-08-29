@@ -232,3 +232,9 @@ class DietOptimizer(object):
             name, unit = '('.join(tokens[:-1]), tokens[-1]
             unit = unit.strip(')')
             print('{:G} {} {}'.format(nutrients[nutrient], unit, name))
+
+
+if __name__ == "__main__":
+    solver = DietOptimizer()
+    solution = solver.solve()
+    solver.summarize_solution(solution)
