@@ -4,6 +4,9 @@ from ortools.linear_solver import pywraplp
 from ortools.linear_solver.linear_solver_natural_api import SumArray
 
 
+calories_name = 'energy (kcal)'
+
+
 def from_csv(filename, headers=True):
     '''
         Given the name of a csv file whose first line are headers,
@@ -24,7 +27,7 @@ def from_csv(filename, headers=True):
 
 
 class DietOptimizer(object):
-    def __init__(self, nutrient_data_filename='sr28_simple.csv',
+    def __init__(self, nutrient_data_filename='nutrients_simple.csv',
                  nutrient_constraints_filename='constraints_simple.csv'):
 
         self.food_table = from_csv(nutrient_data_filename)
@@ -54,13 +57,19 @@ class DietOptimizer(object):
 
         self.create_variable_dict()
 
-        self.special_constraints = {
-            'total fat (g)': self.create_fat_constraint,
-            'carbohydrate (g)': self.create_carb_constraint,
+        self.percent_constraints = {
+            'fat (g)': {'calories_per_gram': 9},
+            'carbohydrate (g)': {'calories_per_gram': 4},
+            'protein (g)': {'calories_per_gram': 9},
         }
         self.create_constraints()
 
         self.objective = self.solver.Objective()
+        for row in self.food_table:
+            name = row['description']
+            var = self.variable_dict[name]
+            calories_in_food = row[calories_name]
+            self.objective.SetCoefficient(var, calories_in_food)
         self.objective.SetMinimization()
 
     def solve(self):
@@ -69,9 +78,7 @@ class DietOptimizer(object):
             the solution and the nutrient amounts
         '''
         status = self.solver.Solve()
-        if status in [self.solver.OPTIMAL, self.solver.FEASIBLE]:
-            print('Found feasible solution')
-        else:
+        if status not in [self.solver.OPTIMAL, self.solver.FEASIBLE]:
             raise Exception('Unable to find feasible solution')
 
         chosen_foods = {
@@ -102,16 +109,19 @@ class DietOptimizer(object):
             The variables are the amount of each food to include
         '''
         self.variable_dict = dict(
-            (row['description'], self.solver.NumVar(0, self.solver.infinity(), row['description']))
+            (row['description'], self.solver.NumVar(0, 10, row['description']))
             for row in self.food_table
         )
 
     def create_constraints(self):
         self.constraint_dict = dict()
+        self.constraint_bounds = dict()
+        # nutrient amount constraints
         for row in self.constraints_table:
             nutrient = row['nutrient']
             lower_bound = row['lower_bound']
             upper_bound = row['upper_bound']
+            self.constraint_bounds[nutrient] = (lower_bound, upper_bound)
             self.create_constraint(nutrient, lower_bound, upper_bound)
 
     def create_constraint(self, nutrient_name, lower, upper):
@@ -123,8 +133,9 @@ class DietOptimizer(object):
         if not lower:
             return
 
-        if nutrient_name in self.special_constraints:
-            self.special_constraints[nutrient_name](lower, upper)
+        if nutrient_name in self.percent_constraints:
+            calories_per_gram = self.percent_constraints[nutrient_name]['calories_per_gram']
+            self.create_percent_constraint(nutrient_name, lower, upper, calories_per_gram=calories_per_gram)
             return
 
         sum_of_foods = self.foods_for_nutrient(nutrient_name)
@@ -151,52 +162,25 @@ class DietOptimizer(object):
 
         if len(relevant_foods) == 0:
             print('Warning! Nutrient %s has no relevant foods!'.format(nutrient_name))
+            return
 
-        '''
-            Should be able to use sum, cf. https://github.com/google/or-tools/issues/452
-        '''
         return SumArray(relevant_foods)
 
-    def create_fat_constraint(self, lower, upper):
+    def create_percent_constraint(self, nutrient_name, lower, upper, calories_per_gram):
         '''
-            Compute the constraint that says the total consumed fat
-            must be between 20 and 30 percent of the total calories.
-            Despite the name, the value in the data table for fat are as a
-            percent of total calories, i.e.
-
-                0.2 * calories <= 9 * fat <= 0.3 * calories
+            Compute the constraint that says the total consumed nutrient
+            must be between `lower` and `upper` percent of the total calories.
         '''
-        fat_name = 'total fat (g)'
-        calories_name = 'energy (kcal)'
         calories_lower_bound = self.foods_for_nutrient(calories_name, scale_by=lower/100)
         calories_upper_bound = self.foods_for_nutrient(calories_name, scale_by=upper/100)
-        fat = self.foods_for_nutrient(fat_name, scale_by=9.0)
+        nutrient_total = self.foods_for_nutrient(nutrient_name, scale_by=calories_per_gram)
 
-        constraint_lb = calories_lower_bound <= fat
-        constraint_ub = fat <= calories_upper_bound
+        constraint_lb = calories_lower_bound <= nutrient_total
+        constraint_ub = nutrient_total <= calories_upper_bound
         self.solver.Add(constraint_lb)
         self.solver.Add(constraint_ub)
-        self.constraint_dict[fat_name + ' (lower bound)'] = constraint_lb
-        self.constraint_dict[fat_name + ' (upper bound)'] = constraint_ub
-
-    def create_carb_constraint(self, lower, upper):
-        '''
-            Compute the constraint that says the total consumed carbohydrate
-            must be between certain percents of the total calories.  Same idea
-            as for fat.
-        '''
-        carbohydrate_name = 'carbohydrate (g)'
-        calories_name = 'energy (kcal)'
-        calories_lower_bound = self.foods_for_nutrient(calories_name, scale_by=lower/100)
-        calories_upper_bound = self.foods_for_nutrient(calories_name, scale_by=upper/100)
-        carbohydrate = self.foods_for_nutrient(carbohydrate_name, scale_by=4.0)
-
-        constraint_lb = calories_lower_bound <= carbohydrate
-        constraint_ub = carbohydrate <= calories_upper_bound
-        self.solver.Add(constraint_lb)
-        self.solver.Add(constraint_ub)
-        self.constraint_dict[carbohydrate_name + ' (lower bound)'] = constraint_lb
-        self.constraint_dict[carbohydrate_name + ' (upper bound)'] = constraint_ub
+        self.constraint_dict[nutrient_name + ' (lower bound)'] = constraint_lb
+        self.constraint_dict[nutrient_name + ' (upper bound)'] = constraint_ub
 
     def summarize_optimization_problem(self):
         for k, v in self.constraint_dict.items():
@@ -206,7 +190,7 @@ class DietOptimizer(object):
             else:
                 print(str(k), cstr)
 
-    def summarize_solution(self, solution):
+    def summarize_solution(self, solution, print_details=False):
         foods = solution['foods']
         nutrients = solution['nutrients']
 
@@ -218,23 +202,37 @@ class DietOptimizer(object):
         print('-' * 50 + '\n')
         for food in sorted(foods.keys()):
             print('{:4.0f}g: {}'.format(foods[food] * 100, food))
-            for nutrient in nutrients:
-                if food_rows[food][nutrient] > 0:
-                    nutrient_percent = 100 * (food_rows[food][nutrient] * foods[food] / nutrients[nutrient])
-                    if nutrient_percent > 0.5:
-                        print('\t{:2.0f}% of {}'.format(nutrient_percent, nutrient))
-            print()
 
+            if print_details:
+                for nutrient in nutrients:
+                    if food_rows[food][nutrient] > 0:
+                        nutrient_percent = 100 * (food_rows[food][nutrient] * foods[food] / nutrients[nutrient])
+                        if nutrient_percent > 0.5:
+                            print('\t{:2.0f}% of {}'.format(nutrient_percent, nutrient))
+                print()
+
+        print()
         print('Nutrient totals')
         print('-' * 50 + '\n')
+        fmt_string = '{:10G} {:5s}{:25s}{:20s}{}'
         for nutrient in nutrients:
             tokens = nutrient.split('(')
             name, unit = '('.join(tokens[:-1]), tokens[-1]
             unit = unit.strip(')')
-            print('{:G} {} {}'.format(nutrients[nutrient], unit, name))
+
+            percent = ''
+            if nutrient in self.percent_constraints:
+                calories_per_gram = self.percent_constraints[nutrient]['calories_per_gram']
+                percent_of_calories = nutrients[nutrient] * calories_per_gram / nutrients[calories_name]
+                percent = ' ({:2.0f}% of calories)'.format(percent_of_calories * 100)
+
+            (lower_bound, upper_bound) = self.constraint_bounds[nutrient]
+            bounds = ' [{}, {}]'.format(lower_bound, upper_bound)
+            print(fmt_string.format(nutrients[nutrient], unit, name, bounds, percent))
 
 
 if __name__ == "__main__":
     solver = DietOptimizer()
+    # solver.summarize_optimization_problem()
     solution = solver.solve()
     solver.summarize_solution(solution)
