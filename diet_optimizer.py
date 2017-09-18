@@ -27,8 +27,8 @@ def from_csv(filename, headers=True):
 
 
 class DietOptimizer(object):
-    def __init__(self, nutrient_data_filename='nutrients_simple.csv',
-                 nutrient_constraints_filename='constraints_simple.csv'):
+    def __init__(self, nutrient_data_filename='nutrients.csv',
+                 nutrient_constraints_filename='constraints.csv'):
 
         self.food_table = from_csv(nutrient_data_filename)
 
@@ -57,10 +57,9 @@ class DietOptimizer(object):
 
         self.create_variable_dict()
 
+        # treat these nutrient constraints as a percentage of the total calories
         self.percent_constraints = {
-            'fat (g)': {'calories_per_gram': 9},
-            'carbohydrate (g)': {'calories_per_gram': 4},
-            'protein (g)': {'calories_per_gram': 9},
+            'total fat (g)': {'calories_per_gram': 9},
         }
         self.create_constraints()
 
@@ -201,20 +200,20 @@ class DietOptimizer(object):
         print('Diet:')
         print('-' * 50 + '\n')
         for food in sorted(foods.keys()):
-            print('{:4.0f}g: {}'.format(foods[food] * 100, food))
+            print('{:7.1f}g: {}'.format(foods[food] * 100, food))
 
             if print_details:
                 for nutrient in nutrients:
                     if food_rows[food][nutrient] > 0:
                         nutrient_percent = 100 * (food_rows[food][nutrient] * foods[food] / nutrients[nutrient])
                         if nutrient_percent > 0.5:
-                            print('\t{:2.0f}% of {}'.format(nutrient_percent, nutrient))
+                            print('\t{:3.1f}% of {}'.format(nutrient_percent, nutrient))
                 print()
 
         print()
         print('Nutrient totals')
         print('-' * 50 + '\n')
-        fmt_string = '{:10G} {:5s}{:25s}{:20s}{}'
+        fmt_string = '{:10.1f} {:5s}{:25s}{:20s}{}'
         for nutrient in nutrients:
             tokens = nutrient.split('(')
             name, unit = '('.join(tokens[:-1]), tokens[-1]
@@ -224,7 +223,7 @@ class DietOptimizer(object):
             if nutrient in self.percent_constraints:
                 calories_per_gram = self.percent_constraints[nutrient]['calories_per_gram']
                 percent_of_calories = nutrients[nutrient] * calories_per_gram / nutrients[calories_name]
-                percent = ' ({:2.0f}% of calories)'.format(percent_of_calories * 100)
+                percent = ' ({:3.1f}% of calories)'.format(percent_of_calories * 100)
 
             (lower_bound, upper_bound) = self.constraint_bounds[nutrient]
             bounds = ' [{}, {}]'.format(lower_bound, upper_bound)
